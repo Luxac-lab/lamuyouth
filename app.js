@@ -1,13 +1,14 @@
 const express = require("express");
-const bodyParser = require("body-parser");
-const request = require("request");
 const https = require("https");
 const cors = require("cors");
+const bodyParser = require("body-parser");
+const request = require("request");
 const nodemailer = require("nodemailer");
 const multiparty = require("multiparty");
-const { SitemapStream, streamToPromise } = require('sitemap');
-const { createReadStream } = require('fs');
+const tls = require('tls');
+const { SitemapStream } = require('sitemap');
 const { createGzip } = require('zlib');
+const { Readable } = require('stream');
 
 app = express();
 
@@ -16,9 +17,6 @@ app.use(cors({ origin: "*" }));
 app.use(express.static("public"));
 
 app.use(bodyParser.urlencoded({ extended: true }));
-
-
-// xml urls
 
 const urls = [
     { url: '/', changefreq: 'weekly', priority: 0.8 },
@@ -29,22 +27,23 @@ const urls = [
     { url: '/resources', changefreq: 'monthly', priority: 0.6 },
 ];
 
-// end xml urls
-
-// node code for xml
 app.get('/sitemap.xml', async (req, res) => {
     try {
         res.header('Content-Type', 'application/xml');
         res.header('Content-Encoding', 'gzip');
-        const smStream = new SitemapStream({ hostname: 'https://lamuyouthalliance.org' });
-        const pipeline = smStream.pipe(createGzip());
 
-        urls.forEach((url) => {
-            smStream.write(url);
+        const smStream = new SitemapStream({ hostname: 'https://lamuyouthalliance.org' });
+        const readableStream = Readable.from(urls); // Convert array to readable stream
+
+        readableStream.on('data', (chunk) => {
+            smStream.write(chunk);
         });
 
-        smStream.end();
+        readableStream.on('end', () => {
+            smStream.end();
+        });
 
+        const pipeline = smStream.pipe(createGzip());
         pipeline.pipe(res).on('error', (e) => {
             throw e;
         });
@@ -53,8 +52,6 @@ app.get('/sitemap.xml', async (req, res) => {
     }
 });
 
-// xml code ends
-
 //***************************************************************Send Forms START**********************************************************\\
 
 const transporter = nodemailer.createTransport({
@@ -62,8 +59,11 @@ const transporter = nodemailer.createTransport({
     port: 465,
     auth: {
         user: 'info@lamuyouthalliance.org',
-        pass: 'Lamuyouthalliance@Kenya2030',
+        pass: 'Lamu@2003hd',
     },
+    tls: {
+        rejectUnauthorized: false // Set to true in production to validate certificates
+    }
 });
 
 // verify connection configuration
@@ -101,9 +101,6 @@ app.post("/send", (req, res) => {
 
 //***************************************************************Send Forms END**********************************************************\\
 
-app.get("/sitemap.xml", function (req, res) {
-    res.sendFile(__dirname + "/sitemap.xml");
-});
 
 app.get("/", function (req, res) {
     res.sendFile(__dirname + "/index.html");
@@ -132,8 +129,6 @@ app.get("/sponsors", function (req, res) {
 app.get("/team", function (req, res) {
     res.sendFile(__dirname + "/team.html");
 });
-
-//***************************************************************MAILCHIMP SUBSCRIPTION START**********************************************************\\
 
 app.post("/", function (req, res) {
     const email = req.body.emailsub;
@@ -171,8 +166,6 @@ app.post("/", function (req, res) {
     request.write(jsonData);
     request.end();
 });
-
-//***************************************************************MAILCHIMP SUBSCRIPTION START**********************************************************\\
 
 app.listen(3000, function (req, res) {
     console.log("Server is running on port 3000")
